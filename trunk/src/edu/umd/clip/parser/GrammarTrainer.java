@@ -74,7 +74,7 @@ public class GrammarTrainer {
         public boolean useFeatureLexicon = false;
         @Option(name = "-lexReg", usage = "Regularization weight of lexical rule features (Default: 1)")
         public double lexWeight = 1;
-        @Option(name = "-synReg", usage = "Regularization weight of phrasal rule probabilities (Default: 0")
+        @Option(name = "-synReg", usage = "Regularization weight of phrasal rule probabilities (Default: 0)")
         public double synWeight = 0;
         @Option(name = "-wordPred", required = false, usage = "Word predicates for the latent lexical model (Default: null)")
         public String wordPredFile = null;
