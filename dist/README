@@ -1,0 +1,285 @@
+I. Introduction
+---------------
+This is a reimplementation of the Berkeley Parser
+(http://code.google.com/p/berkeleyparser/). Some of the class files
+are copied from the Berkeley parser with possible changes to class
+names and contents. The original purpose of the reimplementation was
+to develop ideas that cannot be easily implemented on top of the
+original Berkeley Parser. The parser has subsequently evolved with
+several enhancements to improve parsing performance. Here are some
+highlights of the parser:
+
+   1. Training is parallelized to support multi-threading; 
+   2. Parsing is parallelized, supports n-best extraction, constrained
+      and unconstrained viterbi decoding, parsing score reporting, and
+      parsing with multiple grammars through a product model;
+   3. Includes a featured lexical model to: 1) alleviate over-fitting
+      via regularization, 2) handle OOV words using a featured OOV
+      model P(POS_tag|word), and 3) exploit lexical features for
+      grammar induction using a featured latent lexical model
+      P(latent_tag|word,POS_tag).
+
+This parser was used in the following papers:
+
+   1. Self-Training PCFG Grammars with Latent Annotations Across
+      Languages, Zhongqiang Huang and Mary Harper, EMNLP 2009
+   2. Self-training with Products of Latent Variable Grammars,
+      Zhongqiang Huang, Mary Harper, and Slav Petrov, EMNLP 2010
+   3. Feature-Rich Log-Linear Lexical Model for Latent Variable PCFG
+      Grammars, Zhongqiang Huang and Mary Harper, IJCNLP 2011
+
+II. Training Grammars
+---------------------
+I will first give several examples of how I usually train grammars and
+then briefly describe some selected options of the grammar trainer.
+
+   a) train a Chinese grammar (without the feature rich lexical model):
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.GrammarTrainer -train ctb6.train.list -out ctb6 -jobs 8 -seed 0 -lang chinese
+
+   b) train a English grammar (without the feature rich lexical model) on WSJ and some automatically parsed training data:
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.GrammarTrainer -train wsj.selftrain.list -out wsj_selftrained -jobs 8 -numSplits 7 -lang english -seed 8 -manualTrees 39832 -autoWeight 0.2
+
+   c) train a Arabic grammar on ATB using built-in feature extractors for the featured lexical model (see the IJCNLP2011 paper): 
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.GrammarTrainer -train atb.train.list -out atb -jobs 8 -seed 0 -lang arabic -featured -splitIter 200
+
+   d) train a grammar for a new language using external feature files for the featured lexical model (see the IJCNLP2011 paper):
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.GrammarTrainer -train some_lang.train.list -out some_lang -jobs 8 -seed 0 -lang others -featured -splitIter 200 -wordPred word.feature.file -oovPred oov.feature.file
+
+
+Here is the description of some selected options:
+
+   -train train_list: train_list is a file containing a list of
+      filenames, each of which points to a parse tree file with one
+      parse tree per line. The trainer only supports LDC
+      treebank-style constituency parse trees. 
+
+   -in init_grammar: specify if resuming training from an existing
+      grammar file init_grammar.
+
+   -out grammar_prefix: trained grammars will be saved as
+      grammar_prefix-i.gr, where i=0,...,num_splits.
+
+   -numSplits num_splits: the trainer will run num_splits rounds of
+      splitting-merging iterations. More splittings result in better
+      parsing accuracies (also larger and slower grammars) when more
+      training data is available. The optimal num_splits should be
+      determined externally using a development set. "-numSplits 6" is
+      usually good for training grammars on WSJ, CTB6, and
+      ATB. "-numSplits 7" may give better results if more training
+      data is available (e.g., in self-training) or multiple grammars
+      are later combined into a product model in parsing.
+
+   -splitIter num_split_iter: this is the number of EM iterations
+      after each splitting step. I usually use "-splitIter 200" when
+      the featured lexical model is enabled and use the default
+      "-splitIter 50" otherwise.
+
+   -mergeIter num_merge_iter: this is the number of EM iterations
+      after each merging step. I just use the default "-mergeIter 20".
+
+   -smoothIter num_smooth_iter: this is the number of EM iterations to
+      smooth lexical and rule probabilities. I just use the default
+      "-smoothIter 10".
+
+   -jobs num_jobs: this is the number of concurrent jobs for EM
+      training. I usually set it to the number of cores on a machine.
+
+   -seed rand_seed: this is the seed of the random number
+      generator. Due to high variance in EM training, I usually train
+      multiple grammars with different seeds (e.g., 0~9), and use the
+      development set to pick the best grammar. Grammars trained with
+      different seeds can also be combined into a product model in
+      parsing to achieve better parsing accuracies.
+
+   -autoWeight weight: this is the weight for each automatically
+      labeled parse tree. When training with automatically labeled
+      training data in self-training, I usually set weight to
+      (number_of_manual_trees / number_of_automatic_trees) so that the
+      manually labeled trees and the automatically labeled trees
+      contribute roughly equally to the training likelihood. In order
+      to make this work, the training trees in train_list need to be
+      ordered so that the manual trees are listed before the automatic
+      parse trees, and the -manualTrees option needs to be set to the
+      number of manual trees.
+
+   -manualTrees: the number of manual trees; use with -autoWeight.
+
+   -featured: set this flag to use the featured lexical model.
+
+   -lang language: the parser has built-in heuristics to support
+      English, Chinese, and Arabic when the featured lexical model is
+      not used. The featured lexical model has built-in feature
+      extractors for English, Chinese, Arabic, and other languages
+      (they are all the same by now but could be modified to be
+      language-dependent). If you want to modify the built-in feature
+      extractors, take a look at function initPredStats in
+      edu.umd.clip.parser.FeaturedLexiconManager for the latent
+      lexical model and function initPredStats in
+      edu.umd.clip.parser.FeaturedOOVLexiconManager for the OOV model.
+
+   -wordPred word_feature_file: instead of using the built-in feature
+      extractor for the latent lexical model (see IJCNLP2011 paper),
+      one can use features in an external feature file to train the
+      featured latent lexical model. This file should contain features
+      for each word type in the training and test sets, with one line
+      containing one word type followed by a list of features, e.g.,
+  
+      expletive wid:expletive prefix1:e prefix2:ex prefix3:exp suffix1:e suffix2:ve suffix3:ive
+      CFC-11 wid:CFC-11 prefix1:C prefix2:CF prefix3:CFC suffix1:1 suffix2:11 suffix3:-11 init_cap has_hypen has_digit all_cap
+  
+      Note that the featured lexical model assumes that each word type
+      has a unique feature vector and doesn't support multiple feature
+      vectors for different instances of the same word type. If your
+      data has multiple feature vectors for the same word type, you
+      can try two solutions:
+
+      a) modify your training and test data to use a unique feature
+         vector (e.g., the most frequent one) for each word type;
+
+      b) split the word type into multiple different word types so
+         that each one has exactly one unique feature vector; this
+         should be done on both training and test data and you can map
+         the split word types back to the original word type after
+         parsing.
+
+   -oovPred oov_feature_file: similar to the "-wordPred" option, if
+      this option is used, the featured lexical model will use the
+      features in the external feature file oov_feature_file to train
+      the featured OOV model. The requirement of oov_feature_file is
+      the same as the word_feature_file and these two files can be the
+      same.
+
+To see the complete list of options and their default values, type:
+   java -cp umd-featured-parser.jar  edu.umd.clip.parser.GrammarTrainer -h
+
+
+III. Parsing with a Single Grammar
+---------------------------------
+Again, I will first give several examples of how to run the parser
+with a trained grammar and then briefly describe some options of the
+parser.
+
+   a) parse with a single grammar:
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.SingleParser -gr wsj-6.gr -input wsj.test.sents -output wsj.test.parsed -jobs 8
+
+   b) parse with a single grammar, produce 50-best parse trees, with joint parse probability of the sentence (log-scale) and the parsing scores for each hypothesis:
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.SingleParser -gr wsj-6.gr -input wsj.test.sents -output wsj.test.parsed -jobs 8 -nbest 50 -ll -score
+
+   c) parse with a single grammar, produce the viterbi parse derivation (with latent tags) on the best parse tree:
+      java -Xmx7000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.SingleParser -gr wsj-6.gr -input wsj.test.sents -output wsj.test.parsed -jobs 8 -constrainedViterbi
+
+
+Here is the description of some selected options:
+
+   -gr grammar_file: the trained grammar file.
+
+   -input input_file: the input file to parse; use STDIN as input if
+      this option is not set.
+
+   -output output_file: the output parsed file; use STDOUT as output
+      if this option is not set.
+
+   -jobs num_jobs: this is the number of concurrent parsing jobs. I
+      usually set it to the number of cores on a machine.
+
+   -nbest nbest_size: output the nbest parse trees if nbest_size > 0.
+
+   -ll: output the log-likelihood of sentences under the grammar.
+
+   -score: output the model score of parse trees as determined by
+      the parser.
+
+   -tokenize: the parser assumes tokenized input by default. If this
+      flag is enabled, the parser will use the Stanford PTBLex
+      Tokenizer to tokenize the input on the fly. This only works for
+      English.
+
+   -viterbi: by default the parser uses MaxRuleProduct (see Petrov and
+      Klein, 2007) as the objective for finding the best parse tree;
+      when "-viterbi" is enabled, the parser returns the most probable
+      derivation with latent annotations on tags
+
+   -nolatent: this removes latent annotations from the viterbi
+      derivation; works with -viterbi
+
+   -constrainedViterbi: when enabled, the parser will first find the
+      MaxRuleProduct parse tree and then return the viterbi derivation
+      within this parse tree. This would produce a more accurate
+      derivation than what can be produced with the "-viterbi" flag
+      enabled.
+
+To see the complete list of options and their default values, type:
+   java -cp umd-featured-parser.jar  edu.umd.clip.parser.SingleParser -h
+
+
+IV. Parsing with Multiple Grammars
+----------------------------------
+
+The parser also supports parsing with multiple grammars through a
+product model and it can be called as follows:
+   
+   java -Xmx15000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.ProductParser -gl wsj-6.gl -input wsj.test.sents -output wsj.test.parsed -jobs 8
+
+Here is the description of some selected options:
+
+   -gl grammar_list: this is a list file with one grammar file name per
+       line.
+
+   -input input_file: the input file to parse; use STDIN as input if
+      this option is not set.
+
+   -output output_file: the output parsed file; use STDOUT as output
+      if this option is not set.
+
+   -jobs num_jobs: this is the number of concurrent parsing jobs. I
+      usually set it to the number of cores on a machine.
+   
+   -tokenize: the parser assumes tokenized input by default. If this
+      flag is enabled, the parser will use the Stanford PTBLex
+      Tokenizer to tokenize the input on the fly. This only works
+      properly for English.
+
+To see the complete list of options and their default values, type:
+   java -cp umd-featured-parser.jar  edu.umd.clip.parser.ProductParser -h
+     
+
+V. Miscellaneous Issues:
+------------------------
+1. Memory usage hasn't been optimized yet. "-Xmx7000m" is usually
+   enough for training and parsing with a single grammar but expect to
+   allocate more memory when training a self-trained grammar or
+   parsing with multiple grammars.
+
+2. The parser has gone through many changes and may not produce
+   exactly the same results as reported in the original papers.
+
+3. The parser expects tokenized input and requires an external
+   tokenizer for languages other than English (an English tokenizer is
+   included).
+
+4. As mentioned earlier, the featured lexical model assumes that each
+   word type has a unique feature vector and doesn't support multiple
+   feature vectors for different instances of the same word
+   type. Please see possible solutions above.
+
+5. The parser may not work well if your language has a rich tag
+   set. In the current implementation of the featured lexical model,
+   each feature of a word type is conjoined with a latent POS tag to
+   make an internal feature of the model (see predLatentTagWeightsMap
+   in edu.umd.clip.parser.FeaturedLexiconManager for the featured
+   latent lexical model and predTagWeightMap in
+   edu.umd.clip.parser.FeaturedOOVLexiconManager for the featured OOV
+   model). As a result, features of different latent POS tags are
+   independent. Ideally, there should be some sharing mechanism among
+   features of similar tags. It is possible to modify the
+   implementation of the featured lexical model to achieve. The key is
+   to implement something similar to predLatentTagWeightsMap (and
+   predTagWeightMap) that allows features to be shared among similar
+   tags.
+
+6. This code is provided as it is. I appreciate any bug reports and I
+   will try to fix them if time allows. I may not be able to add new
+   functionalities. Please send inquiries to Zhongqiang Huang at
+   zqhuang@gmail.com
+
+
