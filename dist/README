@@ -11,7 +11,7 @@ highlights of the parser:
 
    1. Training is parallelized to support multi-threading; 
    2. Parsing is parallelized, supports n-best extraction, constrained
-      and unconstrained viterbi decoding, parsing score reporting, and
+      and unconstrained Viterbi decoding, parsing score reporting, and
       parsing with multiple grammars through a product model;
    3. Includes a featured lexical model to: 1) alleviate over-fitting
       via regularization, 2) handle OOV words using a featured OOV
@@ -214,9 +214,8 @@ To see the complete list of options and their default values, type:
 
 IV. Parsing with Multiple Grammars
 ----------------------------------
-
 The parser also supports parsing with multiple grammars through a
-product model and it can be called as follows:
+product model, as follows:
    
    java -Xmx15000m -ss10m -cp umd-featured-parser.jar edu.umd.clip.parser.ProductParser -gl wsj-6.gl -input wsj.test.sents -output wsj.test.parsed -jobs 8
 
@@ -241,9 +240,23 @@ Here is the description of some selected options:
 
 To see the complete list of options and their default values, type:
    java -cp umd-featured-parser.jar  edu.umd.clip.parser.ProductParser -h
-     
 
-V. Miscellaneous Issues:
+
+V. Parsing Accuracies 
+--------------------- 
+Using the same data splits in our IJCNLP2011 paper, the parser with a
+featured lexical model produces the following results (F score) on the
+respective test sets:
+
+    +----------+----------------+---------------+
+    | Language | Single Grammar | Product Model |
+    +----------+----------------+---------------+    
+    | English  |       90.4     |      91.7     |
+    | Chinese  |       85.1     |      86.8     |
+    | Arabic   |       81.7     |      83.6     |
+    +----------+----------------+---------------+
+
+VI. Miscellaneous Issues
 ------------------------
 1. Memory usage hasn't been optimized yet. "-Xmx7000m" is usually
    enough for training and parsing with a single grammar but expect to
@@ -279,7 +292,10 @@ V. Miscellaneous Issues:
 
 6. This code is provided as it is. I appreciate any bug reports and I
    will try to fix them if time allows. I may not be able to add new
-   functionalities. Please send inquiries to Zhongqiang Huang at
-   zqhuang@gmail.com
+   functionalities. 
 
+VII. Contact
+------------
+For any questions, please contact Zhongqiang Huang at
+zqhuang@gmail.com
 
